@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Eren</string>
+    <string name="eren_update">UPDATE</string>
+    <string name="eren_brand">MODMASE</string>
+    <string name="eren_feature_one">New Features Available</string>
+    <string name="eren_feature_two">Previous Bug Fixed</string>
+    <string name="eren_btn_exit">EXIT</string>
+    <string name="eren_btn_update">UPDATE</string>
+    <string name="eren_hero_desc">App banner</string>
+</resources>
