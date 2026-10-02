@@ -30,6 +30,10 @@ jobs:
         working-directory: ${{ matrix.project }}
         run: gradle assembleDebug assembleRelease --no-daemon
 
+      - name: List dex files (must be a single classes.dex)
+        run: |
+          for f in $(find . -name '*.apk'); do echo "== $f"; unzip -l "$f" | grep -E 'classes[0-9]*\.dex'; done
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-APK
