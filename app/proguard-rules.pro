@@ -1,3 +1,0 @@
--dontwarn org.json.**
--keep class com.eren.dialog.** { *; }
--keepclassmembers class com.eren.dialog.** { *; }
