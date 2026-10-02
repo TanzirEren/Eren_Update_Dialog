@@ -46,7 +46,6 @@ public class MainActivity extends Activity {
 
     static final String[] ACCENTS = {"#4F6AF5", "#7C4DFF", "#00A68C", "#F5703A", "#E91E63", "#1A1C28"};
     static final String PERM = "<uses-permission android:name=\"android.permission.INTERNET\"/>";
-    static final int PICK = 77;
 
     SharedPreferences sp;
     FrameLayout top, body, busyView;
@@ -103,7 +102,7 @@ public class MainActivity extends Activity {
         String db = sp.getString("db", "");
         if (db.length() == 0) connectScreen();
         else {
-            Db.base = db;
+            useDb(db);
             String stay = sp.getString("stay", "");
             if (stay.length() > 0) { adminHash = stay; enter(); }
             else loginScreen();
@@ -115,6 +114,11 @@ public class MainActivity extends Activity {
         if (back != null) { Runnable r = back; r.run(); return; }
         if (nav.getVisibility() == View.VISIBLE && tab != 0) { tab(0); return; }
         finish();
+    }
+
+    void useDb(String u) {
+        Db.base = u;
+        Eren.setDb(u);
     }
 
     void busy(boolean b) { busyView.setVisibility(b ? View.VISIBLE : View.GONE); }
@@ -171,7 +175,7 @@ public class MainActivity extends Activity {
             public void onClick(View v) {
                 String u = Db.normalize(url.getText().toString());
                 if (u.length() == 0) { err.setText("Enter your databaseURL"); U.shake(url); return; }
-                Db.base = u;
+                useDb(u);
                 busy(true);
                 Db.get("/eren/admin", new Db.CB() {
                     public void done(boolean ok, String body) {
@@ -545,7 +549,7 @@ public class MainActivity extends Activity {
         f.setOutlineProvider(new ViewOutlineProvider() {
             public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
-        if (url != null && url.length() > 0) Eren.loadBitmap(url, 256, new Eren.BitmapCb() {
+        if (url != null && url.length() > 0) Eren.loadBitmap(this, url, 256, new Eren.BitmapCb() {
             public void done(Bitmap b) { if (b != null) iv.setImageBitmap(b); }
         });
         f.setLayoutParams(new LinearLayout.LayoutParams(U.dp(size), U.dp(size)));
@@ -591,6 +595,44 @@ public class MainActivity extends Activity {
         c.addView(U.labeled(this, "App name", name));
         c.addView(U.labeled(this, "Short detail", detail), U.wrapLp(0, 12, 0, 0));
         c.addView(U.labeled(this, "App icon URL", icon), U.wrapLp(0, 12, 0, 0));
+        final LinearLayout pr = U.row(this);
+        final FrameLayout pbox = new FrameLayout(this);
+        pr.addView(pbox, new LinearLayout.LayoutParams(U.dp(56), U.dp(56)));
+        final TextView pst = U.tv(this, "No icon yet", 12.5f, U.SUB, false);
+        pr.addView(pst, U.lp(0, -2, 12, 0, 8, 0));
+        ((LinearLayout.LayoutParams) pst.getLayoutParams()).weight = 1f;
+        TextView gal = U.btn(this, "Gallery", false, new View.OnClickListener() {
+            public void onClick(View v) { pickIcon(icon); }
+        });
+        gal.setPadding(U.dp(14), U.dp(8), U.dp(14), U.dp(8));
+        pr.addView(gal);
+        c.addView(pr, U.wrapLp(0, 10, 0, 0));
+        final Runnable refreshIcon = new Runnable() {
+            public void run() {
+                final String u = icon.getText().toString().trim();
+                pbox.removeAllViews();
+                pst.setTextColor(U.SUB);
+                if (u.length() == 0) { pst.setText("No icon yet"); return; }
+                pst.setText("Loading\u2026");
+                Eren.loadBitmap(MainActivity.this, u, 256, new Eren.BitmapCb() {
+                    public void done(Bitmap b) {
+                        if (!u.equals(icon.getText().toString().trim())) return;
+                        if (b == null) {
+                            pst.setTextColor(U.BAD);
+                            pst.setText("\u2718 Can't load. Use a direct image link (ends with .png/.jpg) or pick from gallery.");
+                        } else {
+                            pbox.addView(iconView("", u, 56));
+                            pst.setTextColor(U.GOOD);
+                            pst.setText("\u2714 Icon loaded");
+                        }
+                    }
+                });
+            }
+        };
+        icon.addTextChangedListener(U.watch(new U.S() {
+            public void on(String x) { U.MAIN.removeCallbacks(refreshIcon); U.MAIN.postDelayed(refreshIcon, 500); }
+        }));
+        if (icon.getText().length() > 0) refreshIcon.run();
         c.addView(U.tv(this, "\uD83D\uDCC5 Date: " + date + " (auto)", 12.5f, U.SUB, true), U.lp(-2, -2, 4, 12, 0, 0));
         sheet(editKey == null ? "Add app" : "Edit app", c, editKey == null ? "Add" : "Save", new Runnable() {
             public void run() {
@@ -686,6 +728,30 @@ public class MainActivity extends Activity {
         h.addView(hr);
         in.addView(h, U.wrapLp(0, 6, 0, 0));
 
+        // activity (counters sent by Eren)
+        final TextView n1 = U.tv(this, "\u2013", 22, U.PRIMARY, true), n2 = U.tv(this, "\u2013", 22, U.GOOD, true),
+                n3 = U.tv(this, "\u2013", 22, U.BAD, true);
+        final TextView lastSeen = U.tv(this, "", 12, U.SUB, false);
+        LinearLayout stc = U.card(this);
+        LinearLayout sr = U.row(this);
+        sr.addView(statCell(n1, "Dialog views"), new LinearLayout.LayoutParams(0, -2, 1f));
+        sr.addView(statCell(n2, "Update taps"), new LinearLayout.LayoutParams(0, -2, 1f));
+        sr.addView(statCell(n3, "Exit taps"), new LinearLayout.LayoutParams(0, -2, 1f));
+        stc.addView(sr);
+        stc.addView(lastSeen, U.lp(-2, -2, 0, 10, 0, 0));
+        in.addView(stc, U.wrapLp(0, 10, 0, 0));
+        Db.get("/eren/stats/" + key, new Db.CB() {
+            public void done(boolean ok, String body) {
+                JSONObject o = ok ? Db.obj(body) : null;
+                if (o == null) { n1.setText("0"); n2.setText("0"); n3.setText("0"); lastSeen.setText("No activity yet"); return; }
+                n1.setText(String.valueOf(o.optLong("shown")));
+                n2.setText(String.valueOf(o.optLong("updates")));
+                n3.setText(String.valueOf(o.optLong("exits")));
+                long l = o.optLong("last");
+                lastSeen.setText(l > 0 ? "Last seen " + new SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.US).format(new Date(l)) : "");
+            }
+        });
+
         // connection info
         in.addView(sectionTitle("Connect this app"));
         in.addView(copyCard("App Connect Key", key, true), U.wrapLp(0, 0, 0, 10));
@@ -724,6 +790,10 @@ public class MainActivity extends Activity {
                 confirm("Delete this app?", "The key stops working and its dialog disappears everywhere.", "Delete", new Runnable() {
                     public void run() {
                         busy(true);
+                        JSONObject dl = a.optJSONObject("dialog");
+                        String md = dl == null ? "" : dl.optString("media", "");
+                        if (md.startsWith("rtdb:")) Db.del("/eren/media/" + md.substring(5), new Db.CB() { public void done(boolean o, String b) { } });
+                        Db.del("/eren/stats/" + key, new Db.CB() { public void done(boolean o, String b) { } });
                         Db.del("/eren/apps/" + key, new Db.CB() {
                             public void done(boolean ok, String body) {
                                 busy(false);
@@ -738,6 +808,13 @@ public class MainActivity extends Activity {
 
         setScreen(scroll(c), false, new Runnable() { public void run() { tab(1); } });
         U.stagger(in);
+    }
+
+    View statCell(TextView n, String label) {
+        LinearLayout c = U.col(this);
+        c.addView(n);
+        c.addView(U.tv(this, label, 11.5f, U.SUB, true));
+        return c;
     }
 
     View row2(String label, String icon, final Runnable r) {
@@ -801,45 +878,141 @@ public class MainActivity extends Activity {
     }
 
     // =====================================================================
-    //  GALLERY PICK (stored as compressed base64 data URI)
+    //  GALLERY PICK  (image / video -> uploaded to /eren/media, icon -> data URI)
     // =====================================================================
-    void pickImage(Editor e) {
+    static final int PICK_IMG = 77, PICK_VID = 78, PICK_ICON = 79;
+    EditText iconTarget;
+
+    void pickMedia(Editor e, int kind) {
         pendingEditor = e;
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+        i.setType(kind == 1 ? "video/*" : "image/*");
+        startActivityForResult(Intent.createChooser(i, kind == 1 ? "Choose video" : "Choose image"), kind == 1 ? PICK_VID : PICK_IMG);
+    }
+
+    void pickIcon(EditText target) {
+        iconTarget = target;
+        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
         i.setType("image/*");
-        startActivityForResult(Intent.createChooser(i, "Choose image"), PICK);
+        startActivityForResult(Intent.createChooser(i, "Choose icon"), PICK_ICON);
+    }
+
+    Bitmap decode(Uri u, int maxW) throws Exception {
+        InputStream in = getContentResolver().openInputStream(u);
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeStream(in, null, o);
+        in.close();
+        int s = 1;
+        while (o.outWidth / (s * 2) >= maxW) s *= 2;
+        o = new BitmapFactory.Options();
+        o.inSampleSize = s;
+        in = getContentResolver().openInputStream(u);
+        Bitmap bm = BitmapFactory.decodeStream(in, null, o);
+        in.close();
+        if (bm == null) throw new RuntimeException("decode");
+        return bm;
+    }
+
+    byte[] jpeg(Bitmap bm, int limit) {
+        int q = 88;
+        byte[] out;
+        do {
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            bm.compress(Bitmap.CompressFormat.JPEG, q, bo);
+            out = bo.toByteArray();
+            q -= 10;
+        } while (out.length > limit && q > 20);
+        return out;
     }
 
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
-        if (req != PICK || res != RESULT_OK || data == null || pendingEditor == null) return;
-        try {
-            Uri u = data.getData();
-            InputStream in = getContentResolver().openInputStream(u);
-            BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inJustDecodeBounds = true;
-            BitmapFactory.decodeStream(in, null, o);
-            in.close();
-            int s = 1;
-            while (o.outWidth / (s * 2) >= 1200) s *= 2;
-            o = new BitmapFactory.Options();
-            o.inSampleSize = s;
-            in = getContentResolver().openInputStream(u);
-            Bitmap bm = BitmapFactory.decodeStream(in, null, o);
-            in.close();
-            if (bm == null) throw new RuntimeException("decode");
-            int q = 85;
-            byte[] out;
-            do {
-                ByteArrayOutputStream bo = new ByteArrayOutputStream();
-                bm.compress(Bitmap.CompressFormat.JPEG, q, bo);
-                out = bo.toByteArray();
-                q -= 10;
-            } while (out.length > 380 * 1024 && q > 25);
-            pendingEditor.setMedia("data:image/jpeg;base64," + Base64.encodeToString(out, Base64.NO_WRAP));
-            U.toast(this, "Image added (" + out.length / 1024 + " KB)");
-        } catch (Throwable t) { U.toast(this, "Could not read image"); }
+        if (res != RESULT_OK || data == null || data.getData() == null) return;
+        final Uri u = data.getData();
+        if (req == PICK_ICON && iconTarget != null) {
+            try {
+                Bitmap bm = decode(u, 256);
+                int sz = Math.min(bm.getWidth(), bm.getHeight());
+                Bitmap sq = Bitmap.createBitmap(bm, (bm.getWidth() - sz) / 2, (bm.getHeight() - sz) / 2, sz, sz);
+                if (sz > 192) sq = Bitmap.createScaledBitmap(sq, 192, 192, true);
+                byte[] out = jpeg(sq, 30 * 1024);
+                iconTarget.setText("data:image/jpeg;base64," + Base64.encodeToString(out, Base64.NO_WRAP));
+            } catch (Throwable t) { U.toast(this, "Could not read image"); }
+            return;
+        }
+        if ((req == PICK_IMG || req == PICK_VID) && pendingEditor != null) {
+            final boolean video = req == PICK_VID;
+            final Editor ed = pendingEditor;
+            busy(true);
+            new Thread(new Runnable() {
+                public void run() {
+                    String err = null;
+                    byte[] bytes = null;
+                    String mime = video ? "video/mp4" : "image/jpeg";
+                    try {
+                        if (video) {
+                            String t = getContentResolver().getType(u);
+                            if (t != null) mime = t;
+                            InputStream in = getContentResolver().openInputStream(u);
+                            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                            byte[] buf = new byte[32768];
+                            int n;
+                            while ((n = in.read(buf)) > 0) {
+                                bo.write(buf, 0, n);
+                                if (bo.size() > 6 * 1024 * 1024) { err = "Video is over 6 MB. Compress it or use a direct .mp4 link."; break; }
+                            }
+                            in.close();
+                            bytes = bo.toByteArray();
+                        } else {
+                            bytes = jpeg(decode(u, 1200), 380 * 1024);
+                        }
+                    } catch (Throwable t) { err = "Could not read the file"; }
+                    if (err != null) {
+                        final String fe = err;
+                        U.MAIN.post(new Runnable() { public void run() { busy(false); U.toast(MainActivity.this, fe); } });
+                        return;
+                    }
+                    final String id = Db.genKey().replace("-", "").toLowerCase(Locale.ROOT) + Long.toString(System.currentTimeMillis(), 36);
+                    StringBuilder sb = new StringBuilder(bytes.length * 4 / 3 + 120);
+                    sb.append("{\"mime\":\"").append(mime).append("\",\"size\":").append(bytes.length).append(",\"data\":\"")
+                            .append(Base64.encodeToString(bytes, Base64.NO_WRAP)).append("\"}");
+                    Eren.putCache(MainActivity.this, id, bytes);
+                    final int kb = bytes.length / 1024;
+                    final String old = ed.cfg.optString("media", "");
+                    Db.put("/eren/media/" + id, sb.toString(), new Db.CB() {
+                        public void done(boolean ok, String body) {
+                            busy(false);
+                            if (!ok) { U.toast(MainActivity.this, "Upload failed: " + body); return; }
+                            if (old.startsWith("rtdb:")) Db.del("/eren/media/" + old.substring(5), new Db.CB() { public void done(boolean o, String b) { } });
+                            ed.setMedia("rtdb:" + id, video);
+                            U.toast(MainActivity.this, (video ? "Video" : "Image") + " uploaded (" + kb + " KB)");
+                        }
+                    });
+                }
+            }).start();
+        }
+    }
+
+    void chooser(String title, final String[] labels, final U.S cb) {
+        final Dialog d = new Dialog(this);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout box = U.col(this);
+        box.setBackground(U.rr(U.SURF, 24));
+        box.setPadding(U.dp(18), U.dp(16), U.dp(18), U.dp(10));
+        box.addView(U.tv(this, title, 17, U.TEXT, true), U.lp(-2, -2, 0, 0, 0, 8));
+        for (int i = 0; i < labels.length; i++) {
+            final int idx = i;
+            TextView t = U.tv(this, labels[i], 15, U.TEXT, false);
+            t.setPadding(U.dp(6), U.dp(12), U.dp(6), U.dp(12));
+            t.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { d.dismiss(); cb.on(String.valueOf(idx)); } });
+            box.addView(t);
+        }
+        d.setContentView(new ScrollView(this) {{ addView(box); }});
+        d.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        d.getWindow().setLayout(getResources().getDisplayMetrics().widthPixels - U.dp(48), ViewGroup.LayoutParams.WRAP_CONTENT);
+        d.show();
     }
 
     // =====================================================================

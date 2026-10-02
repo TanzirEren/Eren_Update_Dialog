@@ -1,6 +1,7 @@
 package com.eren.admin;
 
 import android.app.Dialog;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.view.Gravity;
@@ -46,14 +47,26 @@ final class Editor {
             "#cfe8ff", "#d4ecd6", "#ffd9b8", "#e4d4ff", "#fff0c2", "#ffd1e0", "#0d0f16", "#1b1e2a", "#12304a", "#1d3a28",
             "#4a2a1a", "#2e1a4a"};
 
+    static final String[] ANIM_IN = {"fade", "slide_up", "slide_down", "slide_left", "slide_right", "zoom_in", "zoom_out",
+            "pop", "bounce", "drop", "flip_x", "flip_y", "rotate", "spin_zoom", "swing", "jelly", "elastic", "roll",
+            "unfold", "stretch", "tilt"};
+    static final String[] ANIM_IN_N = {"Fade", "Slide up", "Slide down", "Slide left", "Slide right", "Zoom in", "Zoom out",
+            "Pop", "Bounce", "Drop", "Flip X", "Flip Y", "Rotate", "Spin zoom", "Swing", "Jelly", "Elastic", "Roll",
+            "Unfold", "Stretch", "Tilt"};
+
     static JSONObject defaults() {
         JSONObject o = new JSONObject();
         U.put(o, "media", "");
         U.put(o, "mediaType", "image");
-        U.put(o, "heroRatio", "1200:675");
+        U.put(o, "heroH", 52);
+        U.put(o, "heroFade", true);
+        U.put(o, "widthPct", 76);
+        U.put(o, "uiScale", 100);
+        U.put(o, "radius", 31);
         U.put(o, "small", "UPDATE");
         U.put(o, "brand1", "MOD");
         U.put(o, "brand2", "MASE");
+        U.put(o, "subtitle", "");
         U.put(o, "symbol", "\u2756");
         JSONArray f = new JSONArray();
         f.put("New Features Available");
@@ -63,17 +76,43 @@ final class Editor {
         U.put(o, "updateText", "UPDATE");
         U.put(o, "updateUrl", "");
         U.put(o, "exitAction", "close");
+        U.put(o, "showExit", true);
+        U.put(o, "showClose", false);
         U.put(o, "cancelable", false);
-        U.put(o, "dim", 100);
-        U.put(o, "radius", 31);
-        U.put(o, "brandSize", 56);
+        U.put(o, "showMode", "always");
         U.put(o, "minVersion", 0);
+        U.put(o, "dim", 100);
+        U.put(o, "brandSize", 56);
+        U.put(o, "btnH", 55);
+        U.put(o, "btnW", 100);
+        U.put(o, "btnRadius", 19);
+        U.put(o, "btnBorder", 3);
+        U.put(o, "btnGap", 12);
+        U.put(o, "btnSize", 17);
+        U.put(o, "btnLayout", "row");
+        U.put(o, "btnShadow", false);
         U.put(o, "fontSmall", "Audiowide-Regular");
         U.put(o, "fontBrand", "Oswald-Variable");
         U.put(o, "fontFeature", "Poppins-Bold");
         U.put(o, "fontButton", "Audiowide-Regular");
+        U.put(o, "animOn", true);
+        U.put(o, "animIn", "zoom_in");
+        U.put(o, "animDur", 420);
+        U.put(o, "animDelay", 0);
+        U.put(o, "animPower", 60);
+        U.put(o, "animEase", "auto");
+        U.put(o, "animStagger", true);
+        U.put(o, "animStaggerMs", 70);
+        U.put(o, "animOut", "zoom");
+        U.put(o, "press", "scale");
+        U.put(o, "attn", "none");
+        U.put(o, "attnMs", 1200);
+        U.put(o, "autoColor", false);
         for (int i = 0; i < PKEYS.length; i++) U.put(o, PKEYS[i], PRESETS[0][i]);
         U.put(o, "updateBg", PRESETS[0][3]);
+        U.put(o, "exitBorder", PRESETS[0][7]);
+        U.put(o, "updateBorder", PRESETS[0][7]);
+        U.put(o, "subColor", "#7a7d88");
         U.put(o, "category", "Default");
         return o;
     }
@@ -84,14 +123,15 @@ final class Editor {
     boolean dirty = false;
     FrameLayout preview;
     Runnable pending;
-    LinearLayout featBox;
-    final String original;
+    LinearLayout featBox, swatchRow;
     final java.util.HashMap<String, EditText> hexFields = new java.util.HashMap<String, EditText>();
     final java.util.HashMap<String, View> swatches = new java.util.HashMap<String, View>();
+    final java.util.HashMap<String, SeekBar> seeks = new java.util.HashMap<String, SeekBar>();
     EditText mediaField;
     boolean mediaInternal = false;
-    LinearLayout ratioHint;
     TextView ratioText;
+    static final String[] COLOR_KEYS = {"backdrop", "card", "text", "accent", "updateBg", "btnText", "exitBg", "exitFg",
+            "border", "exitBorder", "updateBorder", "featureText", "smallColor", "subColor"};
 
     Editor(MainActivity m, String key, JSONObject saved) {
         this.m = m;
@@ -104,7 +144,6 @@ final class Editor {
             }
         } catch (Throwable t) { }
         cfg = d;
-        original = cfg.toString();
     }
 
     void set(String k, Object v) {
@@ -115,23 +154,22 @@ final class Editor {
 
     void refreshSoon() {
         if (pending != null) U.MAIN.removeCallbacks(pending);
-        pending = new Runnable() { public void run() { refresh(); } };
+        pending = new Runnable() { public void run() { refresh(false); } };
         U.MAIN.postDelayed(pending, 140);
     }
 
-    void refresh() {
+    void refresh(boolean anim) {
         if (preview == null) return;
         preview.removeAllViews();
-        Eren.noAnim = true;
+        Eren.noAnim = !anim;
         View v = Eren.buildDialogView(m, cfg, null);
         Eren.noAnim = false;
         int sw = m.getResources().getDisplayMetrics().widthPixels;
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(sw, U.dp(640));
         v.setPivotX(0);
         v.setPivotY(0);
-        float s = scale();
-        v.setScaleX(s);
-        v.setScaleY(s);
+        v.setScaleX(scale());
+        v.setScaleY(scale());
         preview.addView(v, p);
     }
 
@@ -142,7 +180,6 @@ final class Editor {
         final android.content.Context c = m;
         LinearLayout page = U.col(c);
 
-        // top bar
         LinearLayout bar = U.row(c);
         bar.setPadding(U.dp(8), U.dp(8), U.dp(16), U.dp(8));
         TextView back = U.tv(c, "\u2190", 24, U.TEXT, true);
@@ -153,14 +190,18 @@ final class Editor {
         tt.addView(U.tv(c, "Edit dialog", 18, U.TEXT, true));
         tt.addView(U.tv(c, "Live preview", 12, U.SUB, false));
         bar.addView(tt, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView play = U.btn(c, "\u25B6 Play", false, new View.OnClickListener() {
+            public void onClick(View v) { refresh(true); }
+        });
+        play.setPadding(U.dp(14), U.dp(8), U.dp(14), U.dp(8));
+        bar.addView(play, U.lp(-2, -2, 0, 0, 8, 0));
         TextView full = U.btn(c, "Test", false, new View.OnClickListener() {
             public void onClick(View v) { fullTest(); }
         });
-        full.setPadding(U.dp(16), U.dp(8), U.dp(16), U.dp(8));
+        full.setPadding(U.dp(14), U.dp(8), U.dp(14), U.dp(8));
         bar.addView(full);
         page.addView(bar);
 
-        // preview
         int sw = m.getResources().getDisplayMetrics().widthPixels;
         FrameLayout wrap = new FrameLayout(c);
         wrap.setBackground(U.rr(0xFFE9ECF7, 20));
@@ -173,7 +214,6 @@ final class Editor {
         wrap.setPadding(0, U.dp(8), 0, U.dp(8));
         page.addView(wrap, U.lp(-1, -2, 16, 0, 16, 8));
 
-        // controls
         ScrollView sv = new ScrollView(c);
         sv.setVerticalScrollBarEnabled(false);
         LinearLayout list = U.col(c);
@@ -182,22 +222,24 @@ final class Editor {
         page.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         buildMedia(list);
+        buildAutoColor(list);
+        buildSize(list);
         buildText(list);
         buildFeatures(list);
         buildButtons(list);
         buildColors(list);
         buildStyle(list);
-        buildTarget(list);
+        buildAnim(list);
+        buildBehavior(list);
         buildTools(list);
 
-        // bottom save bar
         LinearLayout sb = U.row(c);
         sb.setBackgroundColor(U.SURF);
         sb.setElevation(U.dp(8));
         sb.setPadding(U.dp(16), U.dp(10), U.dp(16), U.dp(10));
         TextView reset = U.btn(c, "Reset", false, new View.OnClickListener() {
             public void onClick(View v) {
-                m.confirm("Reset dialog?", "All fields go back to the default MODMASE look.", "Reset", new Runnable() {
+                m.confirm("Reset dialog?", "All fields go back to the default look.", "Reset", new Runnable() {
                     public void run() { m.openEditor(key, defaults(), true); }
                 });
             }
@@ -209,7 +251,7 @@ final class Editor {
         sb.addView(save, new LinearLayout.LayoutParams(0, -2, 1f));
         page.addView(sb, new LinearLayout.LayoutParams(-1, -2));
 
-        refresh();
+        refresh(false);
         m.back = new Runnable() {
             public void run() {
                 if (!dirty) { m.detail(key); return; }
@@ -222,6 +264,7 @@ final class Editor {
     }
 
     void save() {
+        U.put(cfg, "rev", System.currentTimeMillis());
         m.busy(true);
         Db.put("/eren/apps/" + key + "/dialog", cfg.toString(), new Db.CB() {
             public void done(boolean ok, String body) {
@@ -238,19 +281,18 @@ final class Editor {
     void fullTest() {
         final Dialog d = new Dialog(m, android.R.style.Theme_Material_Light_NoActionBar);
         View v = Eren.buildDialogView(m, cfg, new Eren.Actions() {
-            public void onExit() { }
+            public void onExit() { d.dismiss(); }
             public void onUpdate(String url) { }
+            public void onClose() { d.dismiss(); }
         });
         d.setContentView(v);
         d.setCancelable(true);
-        d.setOnCancelListener(null);
-        v.setOnLongClickListener(new View.OnLongClickListener() {
-            public boolean onLongClick(View x) { d.dismiss(); return true; }
-        });
         d.show();
-        U.toast(m, "Test mode - press Back to close");
+        U.toast(m, "Test mode - Exit or Back closes it");
     }
 
+    // =====================================================================
+    //  small UI builders
     // =====================================================================
     LinearLayout sec(LinearLayout list, String title, String sub) {
         LinearLayout c = U.card(m);
@@ -266,6 +308,12 @@ final class Editor {
         c.addView(U.labeled(m, label, e), U.wrapLp(0, 12, 0, 0));
     }
 
+    void toggle(LinearLayout c, String title, String sub, final String k, boolean def) {
+        c.addView(U.switchRow(m, title, sub, cfg.optBoolean(k, def), new U.S() {
+            public void on(String s) { set(k, s.equals("1")); }
+        }), U.wrapLp(0, 8, 0, 0));
+    }
+
     void chips(LinearLayout c, String label, final String k, final String[] names, final String[] vals, final boolean typeface) {
         HorizontalScrollView hs = new HorizontalScrollView(m);
         hs.setHorizontalScrollBarEnabled(false);
@@ -278,14 +326,13 @@ final class Editor {
             if (typeface) ch.setTypeface(Eren.font(m, vals[i]));
             ch.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    set(k, vals[idx]);
                     for (int j = 0; j < r.getChildCount(); j++) {
                         TextView t = (TextView) r.getChildAt(j);
                         boolean sel = j == idx;
                         t.setTextColor(sel ? 0xFFFFFFFF : U.TEXT);
                         t.setBackground(sel ? U.rr(U.PRIMARY, 50) : U.rrStroke(0xFFFFFFFF, 50, U.LINE, 1));
                     }
-                    if (k.equals("heroRatio")) updateRatioHint();
+                    chosen(k, vals[idx], idx);
                 }
             });
             r.addView(ch, U.lp(-2, -2, 0, 0, 8, 0));
@@ -293,17 +340,52 @@ final class Editor {
         c.addView(U.labeled(m, label, hs), U.wrapLp(0, 12, 0, 0));
     }
 
+    /** Called after a chip is tapped. */
+    void chosen(String k, String v, int idx) {
+        if (k.equals("category")) { applyPreset(idx); return; }
+        if (k.equals("heroRatio")) {
+            String[] p = v.split(":");
+            int pct = Math.round(100f * Float.parseFloat(p[1]) / Float.parseFloat(p[0]));
+            U.put(cfg, "heroRatio", v);
+            setSeek("heroH", pct);
+            set("heroH", pct);
+            ratioText();
+            return;
+        }
+        set(k, v);
+        if (k.startsWith("anim") || k.equals("press") || k.equals("attn")) {
+            if (pending != null) U.MAIN.removeCallbacks(pending);
+            U.MAIN.postDelayed(new Runnable() { public void run() { refresh(true); } }, 160);
+        }
+    }
+
+    void setSeek(String k, int v) {
+        SeekBar sb = seeks.get(k);
+        if (sb == null) return;
+        TextView t = (TextView) sb.getTag();
+        int min = Integer.parseInt(t.getContentDescription().toString());
+        sb.setProgress(v - min);
+        t.setText(t.getHint() + ": " + v);
+    }
+
     void slider(LinearLayout c, final String label, final String k, final int min, final int max, int def) {
         final TextView t = U.tv(m, label + ": " + cfg.optInt(k, def), 12.5f, U.SUB, true);
+        t.setHint(label);
+        t.setContentDescription(String.valueOf(min));
         SeekBar sb = new SeekBar(m);
         sb.setMax(max - min);
         sb.setProgress(cfg.optInt(k, def) - min);
         sb.getProgressDrawable().setTint(U.PRIMARY);
         sb.getThumb().setTint(U.PRIMARY);
+        sb.setTag(t);
+        seeks.put(k, sb);
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar s, int p, boolean user) {
                 t.setText(label + ": " + (p + min));
-                if (user) set(k, p + min);
+                if (user) {
+                    set(k, p + min);
+                    if (k.equals("heroH")) ratioText();
+                }
             }
             public void onStartTrackingTouch(SeekBar s) { }
             public void onStopTrackingTouch(SeekBar s) { }
@@ -312,58 +394,131 @@ final class Editor {
         c.addView(sb, new LinearLayout.LayoutParams(-1, -2));
     }
 
-    // ---- media ----
+    // =====================================================================
+    //  MEDIA
+    // =====================================================================
     void buildMedia(LinearLayout list) {
-        LinearLayout c = sec(list, "Image / Video", "Top of the dialog. Paste a URL or pick from gallery.");
-        String cur = cfg.optString("media", "");
-        mediaField = U.input(m, "https://.../image.png or .mp4", cur.startsWith("data:") ? galleryLabel(cur) : cur);
+        LinearLayout c = sec(list, "Image / Video", "Top of the dialog. Paste a URL or pick from your gallery.");
+        mediaField = U.input(m, "https://.../image.png or .mp4", mediaLabel(cfg.optString("media", "")));
         mediaField.addTextChangedListener(U.watch(new U.S() {
             public void on(String s) {
-                if (mediaInternal) return;
-                if (s.startsWith("[gallery")) return;
+                if (mediaInternal || s.startsWith("[")) return;
                 set("media", s.trim());
             }
         }));
         c.addView(U.labeled(m, "Media URL", mediaField), U.wrapLp(0, 12, 0, 0));
-        chips(c, "Type", "mediaType", new String[]{"Image", "Video (URL)"}, new String[]{"image", "video"}, false);
-        chips(c, "Shape", "heroRatio", new String[]{"16:9", "1:1", "4:3", "4:5", "9:16 portrait"},
-                new String[]{"1200:675", "1000:1000", "1200:900", "1080:1350", "1080:1920"}, false);
+        chips(c, "Type", "mediaType", new String[]{"Image", "Video"}, new String[]{"image", "video"}, false);
+        LinearLayout r = U.row(m);
+        r.addView(U.btn(m, "\uD83D\uDDBC Gallery image", false, new View.OnClickListener() {
+            public void onClick(View v) { m.pickMedia(Editor.this, 0); }
+        }), new LinearLayout.LayoutParams(0, -2, 1f));
+        r.addView(U.btn(m, "\uD83C\uDFAC Gallery video", false, new View.OnClickListener() {
+            public void onClick(View v) { m.pickMedia(Editor.this, 1); }
+        }), U.lp(0, -2, 8, 0, 0, 0));
+        ((LinearLayout.LayoutParams) r.getChildAt(1).getLayoutParams()).weight = 1f;
+        c.addView(r, U.wrapLp(0, 12, 0, 0));
+        c.addView(U.dangerBtn(m, "Remove media", new View.OnClickListener() {
+            public void onClick(View v) { setMedia("", false); }
+        }), U.wrapLp(0, 8, 0, 0));
+        c.addView(U.tv(m, "Gallery files are uploaded to your database (image \u2264 ~400 KB after compression, video up to 6 MB). "
+                + "Bigger videos: use a direct .mp4 link.", 11.5f, U.SUB, false), U.lp(-2, -2, 2, 8, 0, 0));
+        chips(c, "Shape (sets height)", "heroRatio", new String[]{"16:9", "3:2", "1:1", "4:5", "9:16 portrait"},
+                new String[]{"16:9", "3:2", "1:1", "4:5", "9:16"}, false);
         ratioText = U.tv(m, "", 12.5f, U.PRIMARY, true);
         c.addView(ratioText, U.lp(-2, -2, 4, 10, 0, 0));
-        updateRatioHint();
-        LinearLayout r = U.row(m);
-        r.addView(U.btn(m, "\uD83D\uDDBC  Gallery image", false, new View.OnClickListener() {
-            public void onClick(View v) { m.pickImage(Editor.this); }
-        }), new LinearLayout.LayoutParams(0, -2, 1f));
-        r.addView(U.dangerBtn(m, "Clear", new View.OnClickListener() {
-            public void onClick(View v) { setMedia(""); }
-        }), U.lp(-2, -2, 8, 0, 0, 0));
-        c.addView(r, U.wrapLp(0, 12, 0, 0));
-        c.addView(U.tv(m, "Gallery images are compressed and stored inside your database. Video must be a direct link (.mp4).",
-                11.5f, U.SUB, false), U.lp(-2, -2, 2, 8, 0, 0));
+        ratioText();
+        toggle(c, "Soft fade at the bottom", "Blends the media into the card", "heroFade", true);
     }
 
-    String galleryLabel(String d) { return "[gallery image \u2022 " + (d.length() / 1365) + " KB]"; }
-
-    void updateRatioHint() {
-        String[] p = cfg.optString("heroRatio", "1200:675").split(":");
-        ratioText.setText("Recommended size: " + p[0] + " \u00D7 " + p[1] + " px  (width \u00D7 height)");
+    String mediaLabel(String v) {
+        if (v.startsWith("rtdb:")) return "[uploaded to database]";
+        if (v.startsWith("data:")) return "[gallery image \u2022 " + (v.length() / 1365) + " KB]";
+        return v;
     }
 
-    void setMedia(String v) {
+    void ratioText() {
+        if (ratioText == null) return;
+        int pct = cfg.optInt("heroH", 52);
+        int w = 1080;
+        ratioText.setText("Recommended size: " + w + " \u00D7 " + Math.round(w * pct / 100f) + " px");
+    }
+
+    void setMedia(String v, boolean video) {
         mediaInternal = true;
-        mediaField.setText(v.startsWith("data:") ? galleryLabel(v) : v);
+        mediaField.setText(mediaLabel(v));
         mediaInternal = false;
         set("media", v);
-        if (v.startsWith("data:")) set("mediaType", "image");
+        if (v.length() > 0) set("mediaType", video ? "video" : "image");
+        if (v.length() > 0 && cfg.optBoolean("autoColor", false)) autoColors();
     }
 
-    // ---- text ----
+    // ---- auto colours ----
+    void buildAutoColor(LinearLayout list) {
+        LinearLayout c = sec(list, "Auto colors", "Take colors from your image or video and style the whole dialog.");
+        c.addView(U.btn(m, "\uD83C\uDFA8  Match colors to media", true, new View.OnClickListener() {
+            public void onClick(View v) { autoColors(); }
+        }), U.wrapLp(0, 12, 0, 0));
+        HorizontalScrollView hs = new HorizontalScrollView(m);
+        hs.setHorizontalScrollBarEnabled(false);
+        swatchRow = U.row(m);
+        hs.addView(swatchRow);
+        c.addView(hs, U.wrapLp(0, 12, 0, 0));
+        c.addView(U.tv(m, "Tap a swatch to try another main color.", 11.5f, U.SUB, false), U.lp(-2, -2, 2, 6, 0, 0));
+        toggle(c, "Auto-match when media changes", "Runs after you pick a new image/video", "autoColor", false);
+    }
+
+    void autoColors() {
+        String media = cfg.optString("media", "");
+        if (media.length() == 0) { U.toast(m, "Add an image or video first"); return; }
+        U.toast(m, "Reading colors\u2026");
+        Eren.BitmapCb cb = new Eren.BitmapCb() {
+            public void done(Bitmap b) {
+                if (b == null) { U.toast(m, "Could not read the media"); return; }
+                int[] cols = Pal.extract(b);
+                showSwatches(cols);
+                applyScheme(cols[0]);
+            }
+        };
+        if ("video".equals(cfg.optString("mediaType"))) Eren.videoFrame(m, media, cb);
+        else Eren.loadBitmap(m, media, 300, cb);
+    }
+
+    void showSwatches(final int[] cols) {
+        swatchRow.removeAllViews();
+        for (int i = 0; i < cols.length; i++) {
+            final int c = cols[i];
+            View v = new View(m);
+            v.setBackground(U.rrStroke(c, 50, U.LINE, 1));
+            v.setOnClickListener(new View.OnClickListener() { public void onClick(View x) { applyScheme(c); } });
+            swatchRow.addView(v, U.lp(U.dp(46), U.dp(46), 0, 0, 10, 0));
+        }
+    }
+
+    void applyScheme(int c) {
+        Pal.scheme(cfg, c);
+        dirty = true;
+        for (String k : COLOR_KEYS) syncColor(k);
+        refreshSoon();
+    }
+
+    // =====================================================================
+    //  SIZE / TEXT / FEATURES
+    // =====================================================================
+    void buildSize(LinearLayout list) {
+        LinearLayout c = sec(list, "Dialog size", "Width, media height and overall scale.");
+        slider(c, "Dialog width % of screen", "widthPct", 45, 100, 76);
+        slider(c, "Media height % of width", "heroH", 15, 200, 52);
+        slider(c, "Overall scale %", "uiScale", 60, 140, 100);
+        slider(c, "Corner radius", "radius", 0, 60, 31);
+    }
+
     void buildText(LinearLayout list) {
-        LinearLayout c = sec(list, "Title & name", "Small title and the big colored name.");
+        LinearLayout c = sec(list, "Title & name", "Small title, big colored name and optional sub line.");
         field(c, "Small title", "small", "UPDATE");
         field(c, "Name - first part", "brand1", "MOD");
         field(c, "Name - colored part", "brand2", "MASE");
+        field(c, "Sub line (optional)", "subtitle", "Version 2.0 \u2022 12 MB");
+        slider(c, "Name size", "brandSize", 24, 90, 56);
     }
 
     void buildFeatures(LinearLayout list) {
@@ -410,40 +565,31 @@ final class Editor {
         }
     }
 
-    // ---- buttons ----
+    // =====================================================================
+    //  BUTTONS
+    // =====================================================================
     void buildButtons(LinearLayout list) {
-        LinearLayout c = sec(list, "Buttons", "Texts, link and behaviour.");
+        LinearLayout c = sec(list, "Buttons", "Texts, link, size and shape.");
         field(c, "Exit button text", "exitText", "EXIT");
         field(c, "Update button text", "updateText", "UPDATE");
         field(c, "Update URL (opens on UPDATE)", "updateUrl", "https://.../app.apk");
-        chips(c, "Exit does", "exitAction", new String[]{"Close app", "Just dismiss"}, new String[]{"close", "dismiss"}, false);
-        c.addView(U.switchRow(m, "Back button closes dialog", "Off = user must tap a button", cfg.optBoolean("cancelable", false),
-                new U.S() { public void on(String s) { set("cancelable", s.equals("1")); } }), U.wrapLp(0, 10, 0, 0));
+        toggle(c, "Show EXIT button", "Off = force update (only UPDATE)", "showExit", true);
+        chips(c, "Layout", "btnLayout", new String[]{"Side by side", "Stacked"}, new String[]{"row", "column"}, false);
+        slider(c, "Height", "btnH", 32, 90, 55);
+        slider(c, "Width % of card", "btnW", 40, 100, 100);
+        slider(c, "Corner radius", "btnRadius", 0, 45, 19);
+        slider(c, "Border thickness", "btnBorder", 0, 9, 3);
+        slider(c, "Gap between buttons", "btnGap", 0, 40, 12);
+        slider(c, "Text size", "btnSize", 10, 30, 17);
+        toggle(c, "Button shadow", null, "btnShadow", false);
     }
 
-    // ---- colors ----
+    // =====================================================================
+    //  COLORS
+    // =====================================================================
     void buildColors(LinearLayout list) {
-        LinearLayout c = sec(list, "Colors", "Pick a category preset, then fine-tune with HEX or palette.");
+        LinearLayout c = sec(list, "Colors", "Preset by category, then fine-tune with HEX or palette.");
         chips(c, "Category preset", "category", PRESET_NAMES, PRESET_NAMES, false);
-        // chips() only stores category; hook preset apply by wrapping row clicks
-        HorizontalScrollView hs = (HorizontalScrollView) ((LinearLayout) c.getChildAt(c.getChildCount() - 1)).getChildAt(1);
-        final LinearLayout row = (LinearLayout) hs.getChildAt(0);
-        for (int i = 0; i < row.getChildCount(); i++) {
-            final int idx = i;
-            final View.OnClickListener base = null;
-            final View ch = row.getChildAt(i);
-            ch.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    applyPreset(idx);
-                    for (int j = 0; j < row.getChildCount(); j++) {
-                        TextView t = (TextView) row.getChildAt(j);
-                        boolean sel = j == idx;
-                        t.setTextColor(sel ? 0xFFFFFFFF : U.TEXT);
-                        t.setBackground(sel ? U.rr(U.PRIMARY, 50) : U.rrStroke(0xFFFFFFFF, 50, U.LINE, 1));
-                    }
-                }
-            });
-        }
         colorRow(c, "Page backdrop", "backdrop");
         colorRow(c, "Dialog card", "card");
         colorRow(c, "Name - first part", "text");
@@ -452,9 +598,12 @@ final class Editor {
         colorRow(c, "Update button text", "btnText");
         colorRow(c, "Exit button", "exitBg");
         colorRow(c, "Exit button text", "exitFg");
-        colorRow(c, "Button border", "border");
+        colorRow(c, "Border (both)", "border");
+        colorRow(c, "Exit border", "exitBorder");
+        colorRow(c, "Update border", "updateBorder");
         colorRow(c, "Feature text", "featureText");
         colorRow(c, "Small title", "smallColor");
+        colorRow(c, "Sub line", "subColor");
         slider(c, "Backdrop opacity %", "dim", 0, 100, 100);
     }
 
@@ -462,17 +611,18 @@ final class Editor {
         String[] p = PRESETS[i];
         for (int k = 0; k < PKEYS.length; k++) U.put(cfg, PKEYS[k], p[k]);
         U.put(cfg, "updateBg", p[3]);
+        U.put(cfg, "exitBorder", p[7]);
+        U.put(cfg, "updateBorder", p[7]);
         U.put(cfg, "category", PRESET_NAMES[i]);
         dirty = true;
-        String[] all = {"backdrop", "card", "text", "accent", "updateBg", "btnText", "exitBg", "exitFg", "border", "featureText", "smallColor"};
-        for (String k : all) syncColor(k);
+        for (String k : COLOR_KEYS) syncColor(k);
         refreshSoon();
     }
 
     void syncColor(String k) {
         EditText e = hexFields.get(k);
         View sw = swatches.get(k);
-        if (e != null) { e.setText(cfg.optString(k)); }
+        if (e != null) e.setText(cfg.optString(k));
         if (sw != null) sw.setBackground(U.circle(Eren.col(cfg.optString(k), Color.GRAY)));
     }
 
@@ -480,8 +630,7 @@ final class Editor {
         LinearLayout r = U.row(m);
         final View sw = new View(m);
         sw.setBackground(U.circle(Eren.col(cfg.optString(k, "#888888"), Color.GRAY)));
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(U.dp(38), U.dp(38));
-        r.addView(sw, sp);
+        r.addView(sw, new LinearLayout.LayoutParams(U.dp(38), U.dp(38)));
         r.addView(U.tv(m, label, 14, U.TEXT, false), U.lp(0, -2, 12, 0, 8, 0));
         ((LinearLayout.LayoutParams) r.getChildAt(1).getLayoutParams()).weight = 1f;
         final EditText e = U.input(m, "#RRGGBB", cfg.optString(k, ""));
@@ -503,9 +652,7 @@ final class Editor {
         r.addView(e, new LinearLayout.LayoutParams(U.dp(112), -2));
         hexFields.put(k, e);
         swatches.put(k, sw);
-        sw.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { palette(k); }
-        });
+        sw.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { palette(k); } });
         c.addView(r, U.wrapLp(0, 10, 0, 0));
     }
 
@@ -535,29 +682,62 @@ final class Editor {
         d.show();
     }
 
-    // ---- style ----
+    // =====================================================================
+    //  FONTS
+    // =====================================================================
     void buildStyle(LinearLayout list) {
-        LinearLayout c = sec(list, "Fonts & shape", "Fonts are bundled inside the app (assets/fonts).");
+        LinearLayout c = sec(list, "Fonts", "Fonts are bundled inside the app (assets/fonts).");
         chips(c, "Small title font", "fontSmall", FONT_NAMES, FONT_FILES, true);
         chips(c, "Name font", "fontBrand", FONT_NAMES, FONT_FILES, true);
         chips(c, "Feature font", "fontFeature", FONT_NAMES, FONT_FILES, true);
         chips(c, "Button font", "fontButton", FONT_NAMES, FONT_FILES, true);
-        slider(c, "Name size", "brandSize", 28, 80, 56);
-        slider(c, "Corner radius", "radius", 0, 48, 31);
+        slider(c, "Small title size", "smallSize", 8, 30, 16);
+        slider(c, "Feature text size", "featureSize", 9, 28, 15);
     }
 
-    void buildTarget(LinearLayout list) {
-        LinearLayout c = sec(list, "Targeting", "Show only to older versions of the app.");
+    // =====================================================================
+    //  ANIMATION
+    // =====================================================================
+    void buildAnim(LinearLayout list) {
+        LinearLayout c = sec(list, "Animation", "21 entrance effects with full control. Tap \u25B6 Play to preview.");
+        c.addView(U.switchRow(m, "Animations", "Master switch for everything below", cfg.optBoolean("animOn", true), new U.S() {
+            public void on(String s) { set("animOn", s.equals("1")); }
+        }), U.wrapLp(0, 8, 0, 0));
+        chips(c, "Entrance effect", "animIn", ANIM_IN_N, ANIM_IN, false);
+        slider(c, "Duration (ms)", "animDur", 100, 2500, 420);
+        slider(c, "Start delay (ms)", "animDelay", 0, 2000, 0);
+        slider(c, "Intensity %", "animPower", 10, 200, 60);
+        chips(c, "Easing", "animEase", new String[]{"Auto", "Smooth", "Fast-slow", "Overshoot", "Bounce", "Elastic", "Anticipate", "Linear", "Speed up"},
+                new String[]{"auto", "decelerate", "fastslow", "overshoot", "bounce", "elastic", "anticipate", "linear", "accelerate"}, false);
+        toggle(c, "Stagger content", "Title, name, list, buttons appear one by one", "animStagger", true);
+        slider(c, "Stagger gap (ms)", "animStaggerMs", 0, 400, 70);
+        chips(c, "Exit effect", "animOut", new String[]{"None", "Fade + zoom", "Slide down", "Slide up", "Spin"},
+                new String[]{"none", "zoom", "slide_down", "slide_up", "spin"}, false);
+        chips(c, "Button press", "press", new String[]{"Scale", "Bounce", "None"}, new String[]{"scale", "bounce", "none"}, false);
+        chips(c, "Update button attention", "attn", new String[]{"None", "Pulse", "Shake", "Wobble", "Float", "Glow"},
+                new String[]{"none", "pulse", "shake", "wobble", "float", "glow"}, false);
+        slider(c, "Attention speed (ms)", "attnMs", 300, 4000, 1200);
+    }
+
+    // =====================================================================
+    //  BEHAVIOUR / TOOLS
+    // =====================================================================
+    void buildBehavior(LinearLayout list) {
+        LinearLayout c = sec(list, "Behavior", "When and how the dialog appears.");
+        chips(c, "Show", "showMode", new String[]{"Every launch", "Once per day", "Once per save"}, new String[]{"always", "daily", "once"}, false);
+        chips(c, "Exit does", "exitAction", new String[]{"Close app", "Just dismiss"}, new String[]{"close", "dismiss"}, false);
+        toggle(c, "Close (\u2715) button on top", "Lets users dismiss without exiting", "showClose", false);
+        toggle(c, "Back button closes dialog", "Off = user must tap a button", "cancelable", false);
         EditText e = U.input(m, "0 = show to everyone", String.valueOf(cfg.optInt("minVersion", 0)));
         e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         e.addTextChangedListener(U.watch(new U.S() {
             public void on(String s) { int v = 0; try { v = Integer.parseInt(s.trim()); } catch (Throwable t) { } set("minVersion", v); }
         }));
-        c.addView(U.labeled(m, "Show if app versionCode is below", e), U.wrapLp(0, 12, 0, 0));
+        c.addView(U.labeled(m, "Only if app versionCode is below", e), U.wrapLp(0, 12, 0, 0));
     }
 
     void buildTools(LinearLayout list) {
-        LinearLayout c = sec(list, "Backup", "Copy this dialog as JSON or paste one.");
+        LinearLayout c = sec(list, "Tools", "Backup and reuse.");
         LinearLayout r = U.row(m);
         r.addView(U.btn(m, "Copy JSON", false, new View.OnClickListener() {
             public void onClick(View v) { U.copy(m, cfg.toString(), "JSON"); }
@@ -567,6 +747,31 @@ final class Editor {
         }), U.lp(0, -2, 8, 0, 0, 0));
         ((LinearLayout.LayoutParams) r.getChildAt(1).getLayoutParams()).weight = 1f;
         c.addView(r, U.wrapLp(0, 12, 0, 0));
+        c.addView(U.btn(m, "Copy dialog from another app", false, new View.OnClickListener() {
+            public void onClick(View v) { copyFrom(); }
+        }), U.wrapLp(0, 8, 0, 0));
+    }
+
+    void copyFrom() {
+        final java.util.ArrayList<String> ks = new java.util.ArrayList<String>();
+        java.util.ArrayList<String> names = new java.util.ArrayList<String>();
+        java.util.Iterator<String> it = m.apps.keys();
+        while (it.hasNext()) {
+            String k = it.next();
+            if (k.equals(key)) continue;
+            JSONObject a = m.apps.optJSONObject(k);
+            if (a == null) continue;
+            ks.add(k);
+            names.add(a.optString("name", k));
+        }
+        if (ks.isEmpty()) { U.toast(m, "No other apps"); return; }
+        m.chooser("Copy dialog from\u2026", names.toArray(new String[0]), new U.S() {
+            public void on(String s) {
+                int i = Integer.parseInt(s);
+                JSONObject a = m.apps.optJSONObject(ks.get(i));
+                m.openEditor(key, a == null ? null : a.optJSONObject("dialog"), true);
+            }
+        });
     }
 
     void pasteJson() {
